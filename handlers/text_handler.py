@@ -47,7 +47,11 @@ async def handle_platform(callback: CallbackQuery, state: FSMContext) -> None:
 
     try:
         parts = await reformat_text(raw_text)
-        hook, body, cta = parts["hook"], parts["body"], parts["cta"]
+        hook = parts["hook"]
+        tags = parts.get("tags", "")
+        body = parts["body"]
+        cta = parts["cta"]
+        hashtags = parts.get("hashtags", [])
     except Exception:
         await callback.message.edit_text("❌ Ошибка при обращении к ИИ. Попробуй ещё раз.")
         return
@@ -55,11 +59,11 @@ async def handle_platform(callback: CallbackQuery, state: FSMContext) -> None:
     results = []
 
     if platform in ("telegram", "both"):
-        tg_text = format_for_telegram(hook, body, cta)
+        tg_text = format_for_telegram(hook, body, tags, cta)
         results.append(f"📱 *Telegram:*\n\n{tg_text}")
 
     if platform in ("instagram", "both"):
-        ig_text = format_for_instagram(hook, body, cta)
+        ig_text = format_for_instagram(hook, body, tags, cta, hashtags=hashtags)
         results.append(f"📷 Instagram:\n\n{ig_text}")
 
     output = "\n\n━━━━━━━━━━━━━━━━\n\n".join(results)
