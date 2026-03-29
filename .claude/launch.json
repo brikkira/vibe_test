@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "telegram-bot",
+      "runtimeExecutable": "/Users/kirabrik/.local/bin/uv",
+      "runtimeArgs": ["run", "python", "bot.py"],
+      "port": 8443
+    },
+    {
+      "name": "tests",
+      "runtimeExecutable": "/Users/kirabrik/.local/bin/uv",
+      "runtimeArgs": ["run", "pytest", "tests/", "-v"],
+      "port": 8444
+    }
+  ]
+}
