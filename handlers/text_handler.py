@@ -1,3 +1,4 @@
+import os
 import re
 
 from aiogram import Router, F
@@ -15,6 +16,8 @@ from services.platform_formatter import (
 )
 
 router = Router()
+
+ADMIN_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
 
 _URL_RE = re.compile(r'https?://\S+')
 _EARLY_BIRD_RE = re.compile(r'early\s*bird', re.IGNORECASE)
@@ -161,20 +164,35 @@ async def _do_format(state: FSMContext, message: Message) -> None:
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
+    if message.from_user.id == ADMIN_ID:
+        from handlers.schedule_handler import admin_keyboard
+        await message.answer(
+            "Привет! Выбери что хочешь сделать:",
+            reply_markup=admin_keyboard(),
+        )
+    else:
+        await state.set_state(TextState.waiting_for_platform)
+        await message.answer("Choose platform:", reply_markup=_platform_keyboard())
+
+
+@router.message(F.text == "✍️ Контент")
+async def handle_content_button(message: Message, state: FSMContext) -> None:
+    await state.clear()
     await state.set_state(TextState.waiting_for_platform)
-    await message.answer(
-        "Choose platform:",
-        reply_markup=_platform_keyboard(),
-    )
+    await message.answer("Выбери платформу:", reply_markup=_platform_keyboard())
 
 
 @router.message(StateFilter(None), F.text)
 async def handle_no_state(message: Message, state: FSMContext) -> None:
+    if message.from_user.id == ADMIN_ID:
+        from handlers.schedule_handler import admin_keyboard
+        await message.answer(
+            "Выбери что хочешь сделать:",
+            reply_markup=admin_keyboard(),
+        )
+        return
     await state.set_state(TextState.waiting_for_platform)
-    await message.answer(
-        "Choose platform:",
-        reply_markup=_platform_keyboard(),
-    )
+    await message.answer("Choose platform:", reply_markup=_platform_keyboard())
 
 
 @router.message(TextState.waiting_for_platform, F.text)
