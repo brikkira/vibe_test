@@ -11,6 +11,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
 from handlers.text_handler import router
+from handlers.schedule_handler import router as schedule_router
 
 load_dotenv()
 
@@ -25,6 +26,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
     )
     dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(schedule_router)
     dp.include_router(router)
 
     app = web.Application()
