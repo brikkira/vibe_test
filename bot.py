@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from handlers.text_handler import router
 from handlers.schedule_handler import router as schedule_router
+from handlers.voice_handler import router as voice_router
 
 load_dotenv()
 
@@ -26,6 +27,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
     )
     dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(voice_router)
     dp.include_router(schedule_router)
     dp.include_router(router)
 
