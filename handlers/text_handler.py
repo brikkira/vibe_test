@@ -185,7 +185,49 @@ async def handle_content_button(message: Message, state: FSMContext) -> None:
 @router.message(StateFilter(None), F.text)
 async def handle_no_state(message: Message, state: FSMContext) -> None:
     if message.from_user.id == ADMIN_ID:
+        from handlers.voice_handler import _detect_intent, _parse_event, ADD_KEYWORDS, TODAY_KEYWORDS, WEEK_KEYWORDS
         from handlers.schedule_handler import admin_keyboard
+        from services.calendar_service import get_today_events, get_week_events, add_event
+
+        intent = _detect_intent(message.text)
+
+        if intent == "today":
+            try:
+                result = get_today_events()
+                await message.answer(result, parse_mode="Markdown", reply_markup=admin_keyboard())
+            except Exception as e:
+                await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_keyboard())
+            return
+
+        if intent == "week":
+            try:
+                result = get_week_events()
+                await message.answer(result, parse_mode="Markdown", reply_markup=admin_keyboard())
+            except Exception as e:
+                await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_keyboard())
+            return
+
+        if intent == "add":
+            processing = await message.answer("⏳ Разбираю событие...")
+            event = await _parse_event(message.text)
+            if event:
+                try:
+                    created = add_event(event["title"], event["date"], event["start"], event.get("end", ""))
+                    await processing.edit_text(
+                        f"✅ Добавила: *{created}*\n📅 {event['date']} {event['start']}–{event.get('end', '')}",
+                        parse_mode="Markdown",
+                    )
+                    await message.answer("Что ещё?", reply_markup=admin_keyboard())
+                except Exception as e:
+                    await processing.edit_text(f"❌ Ошибка: {e}")
+                    await message.answer("Что ещё?", reply_markup=admin_keyboard())
+            else:
+                await processing.edit_text(
+                    "Не смогла разобрать 🤔 Попробуй: «Добавь созвон с Катей в воскресенье в 15:00»"
+                )
+                await message.answer("Что ещё?", reply_markup=admin_keyboard())
+            return
+
         await message.answer(
             "Выбери что хочешь сделать:",
             reply_markup=admin_keyboard(),

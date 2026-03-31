@@ -68,13 +68,16 @@ async def handle_voice(message: Message, state: FSMContext, bot: Bot) -> None:
     if message.from_user.id != ADMIN_ID:
         return
 
-    # Download voice file
-    file_io = io.BytesIO()
-    await bot.download(message.voice.file_id, destination=file_io)
-    file_io.seek(0)
-    audio_bytes = file_io.read()
-
     processing_msg = await message.answer("🎙 Слушаю...")
+
+    try:
+        file_io = io.BytesIO()
+        await bot.download(message.voice.file_id, destination=file_io)
+        file_io.seek(0)
+        audio_bytes = file_io.read()
+    except Exception as e:
+        await processing_msg.edit_text(f"❌ Не смогла скачать аудио: {e}")
+        return
 
     try:
         text = await transcribe_audio(audio_bytes)
