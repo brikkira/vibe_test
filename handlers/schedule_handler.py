@@ -45,24 +45,42 @@ def _is_admin(message: Message) -> bool:
     return message.from_user.id == ADMIN_ID
 
 
-def _week_inline_keyboard(events: list[dict]) -> InlineKeyboardMarkup:
-    """Inline keyboard with ✏️ button for each event."""
-    builder = InlineKeyboardBuilder()
+DAY_NAMES_RU = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс"}
+DAY_NAMES_FULL = {0: "Понедельник", 1: "Вторник", 2: "Среда", 3: "Четверг",
+                  4: "Пятница", 5: "Суббота", 6: "Воскресенье"}
+
+
+def _week_inline_keyboard(events: list[dict]) -> list[InlineKeyboardMarkup]:
+    """Returns list of keyboards — one per day, each with a day header button and event buttons."""
+    from collections import OrderedDict
+
+    by_day: OrderedDict[str, list] = OrderedDict()
     for event in events:
-        event_id = event.get("id", "")
-        summary = event.get("summary", "(без названия)")
         start = event.get("start", {})
-        if "dateTime" in start:
-            dt = datetime.fromisoformat(start["dateTime"])
-            end_dt = datetime.fromisoformat(event["end"]["dateTime"])
-            label = f"✏️ {dt.strftime('%d.%m %H:%M')}–{end_dt.strftime('%H:%M')} {summary}"
-        else:
-            label = f"✏️ {summary}"
-        # Truncate label to 64 chars (Telegram limit)
-        label = label[:64]
-        builder.button(text=label, callback_data=f"edit_event:{event_id}")
-    builder.adjust(1)
-    return builder.as_markup()
+        date_key = (start.get("date") or start.get("dateTime", "")[:10])
+        by_day.setdefault(date_key, []).append(event)
+
+    keyboards = []
+    for date_key, day_events in by_day.items():
+        builder = InlineKeyboardBuilder()
+        dt = datetime.fromisoformat(date_key)
+        day_label = f"── {DAY_NAMES_FULL[dt.weekday()]}, {dt.strftime('%d.%m')} ──"
+        # Day header (non-clickable — sends noop)
+        builder.button(text=day_label, callback_data="noop")
+        for event in day_events:
+            event_id = event.get("id", "")
+            summary = event.get("summary", "(без названия)")
+            start = event.get("start", {})
+            if "dateTime" in start:
+                edt = datetime.fromisoformat(start["dateTime"])
+                end_dt = datetime.fromisoformat(event["end"]["dateTime"])
+                label = f"✏️ {edt.strftime('%H:%M')}–{end_dt.strftime('%H:%M')} {summary}"
+            else:
+                label = f"✏️ {summary}"
+            builder.button(text=label[:64], callback_data=f"edit_event:{event_id}")
+        builder.adjust(1)
+        keyboards.append(builder.as_markup())
+    return keyboards
 
 
 def _parse_event_text(text: str):
@@ -107,12 +125,19 @@ async def cmd_week(message: Message, state: FSMContext) -> None:
     try:
         text = get_week_events()
         events = get_week_events_raw()
-        kb = _week_inline_keyboard(events) if events else None
         await message.answer(text, parse_mode="Markdown", reply_markup=admin_keyboard())
-        if kb:
-            await message.answer("Нажми ✏️ чтобы изменить событие:", reply_markup=kb)
+        if events:
+            keyboards = _week_inline_keyboard(events)
+            await message.answer("Нажми ✏️ чтобы изменить событие:")
+            for kb in keyboards:
+                await message.answer("\u200b", reply_markup=kb)
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_keyboard())
+
+
+@router.callback_query(F.data == "noop")
+async def handle_noop(callback: CallbackQuery) -> None:
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("edit_event:"))
