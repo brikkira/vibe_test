@@ -120,3 +120,40 @@ def add_event(summary: str, date_str: str, start_time: str, end_time: str) -> st
     }
     created = service.events().insert(calendarId=CALENDAR_ID, body=event).execute()
     return created.get("summary", summary)
+
+
+def get_week_events_raw() -> list[dict]:
+    """Returns raw event list with IDs for the next 7 days."""
+    now = _bali_now()
+    week_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = week_start + timedelta(days=7)
+    service = _get_service()
+    result = service.events().list(
+        calendarId=CALENDAR_ID,
+        timeMin=week_start.isoformat(),
+        timeMax=week_end.isoformat(),
+        singleEvents=True,
+        orderBy="startTime",
+        timeZone=TIMEZONE,
+    ).execute()
+    return result.get("items", [])
+
+
+def update_event(event_id: str, summary: str, date_str: str, start_time: str, end_time: str) -> str:
+    """Update an existing event by ID."""
+    service = _get_service()
+    event = {
+        "summary": summary,
+        "start": {
+            "dateTime": f"{date_str}T{start_time}:00",
+            "timeZone": TIMEZONE,
+        },
+        "end": {
+            "dateTime": f"{date_str}T{end_time}:00",
+            "timeZone": TIMEZONE,
+        },
+    }
+    updated = service.events().update(
+        calendarId=CALENDAR_ID, eventId=event_id, body=event
+    ).execute()
+    return updated.get("summary", summary)
