@@ -70,6 +70,36 @@ Return this exact JSON schema:
 Reply ONLY with valid JSON, no explanations."""
 
 
+_PARSE_EVENT_PROMPT = """Extract event details from the user's message and return JSON.
+Today's date context: use it to resolve relative dates like "завтра", "в пятницу", "6 апреля".
+Return ONLY this JSON:
+{
+  "title": "event title",
+  "date": "YYYY-MM-DD",
+  "start_time": "HH:MM",
+  "end_time": "HH:MM"
+}
+If any field cannot be determined, set it to null.
+Reply ONLY with valid JSON, no explanations."""
+
+
+async def parse_event_nlp(text: str, today: str) -> dict:
+    """Parse natural language event description into structured data."""
+    completion = await client.chat.completions.create(
+        model="openai/gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": _PARSE_EVENT_PROMPT},
+            {"role": "user", "content": f"Today is {today}. Event: {text}"},
+        ],
+    )
+    response_text = completion.choices[0].message.content.strip()
+    if response_text.startswith("```"):
+        response_text = response_text.split("```")[1]
+        if response_text.startswith("json"):
+            response_text = response_text[4:]
+    return json.loads(response_text)
+
+
 async def reformat_text(raw_text: str) -> dict:
     completion = await client.chat.completions.create(
         model="openai/gpt-4o-mini",

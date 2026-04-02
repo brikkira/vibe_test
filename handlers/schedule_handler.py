@@ -148,9 +148,11 @@ async def handle_edit_event(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(editing_event_id=event_id)
     await state.set_state(EditState.waiting_for_new_details)
     await callback.message.answer(
-        "Напиши новые данные события:\n"
-        "`название  ГГГГ-ММ-ДД  ЧЧ:ММ-ЧЧ:ММ`\n\n"
-        "Например:\n`Созвон с Катей  2026-04-06  16:00-17:00`",
+        "Напиши что изменить — как тебе удобно:\n\n"
+        "Например:\n"
+        "• _Созвон с Катей, 6 апреля, 16:00–17:00_\n"
+        "• _CI Class, завтра, 11 утра до 2 дня_\n"
+        "• _Jump Academy, пятница, 13:00–16:00_",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove(),
     )
@@ -158,29 +160,44 @@ async def handle_edit_event(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(EditState.waiting_for_new_details, F.text)
 async def handle_edit_details(message: Message, state: FSMContext) -> None:
+    from datetime import date
+    from services.ai_formatter import parse_event_nlp
+
     data = await state.get_data()
     event_id = data.get("editing_event_id")
     await state.clear()
 
-    parsed = _parse_event_text(message.text)
-    if not parsed:
-        await message.answer(
-            "❌ Не смогла разобрать. Формат:\n`название  ГГГГ-ММ-ДД  ЧЧ:ММ-ЧЧ:ММ`",
-            parse_mode="Markdown",
+    processing = await message.answer("⏳ Разбираю...")
+    try:
+        today = date.today().isoformat()
+        parsed = await parse_event_nlp(message.text, today)
+    except Exception as e:
+        await processing.edit_text(f"❌ Ошибка AI: {e}", reply_markup=admin_keyboard())
+        return
+
+    title = parsed.get("title")
+    date_str = parsed.get("date")
+    start_time = parsed.get("start_time")
+    end_time = parsed.get("end_time")
+
+    if not all([title, date_str, start_time, end_time]):
+        missing = [f for f, v in [("название", title), ("дата", date_str),
+                                   ("начало", start_time), ("конец", end_time)] if not v]
+        await processing.edit_text(
+            f"❌ Не смогла разобрать: {', '.join(missing)}. Попробуй написать чётче.",
             reply_markup=admin_keyboard(),
         )
         return
 
-    title, date_str, start_time, end_time = parsed
     try:
         updated = update_event(event_id, title, date_str, start_time, end_time)
-        await message.answer(
+        await processing.edit_text(
             f"✅ Обновлено: *{updated}*\n📅 {date_str} {start_time}–{end_time}",
             parse_mode="Markdown",
             reply_markup=admin_keyboard(),
         )
     except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_keyboard())
+        await processing.edit_text(f"❌ Ошибка: {e}", reply_markup=admin_keyboard())
 
 
 @router.message(Command("add"))
