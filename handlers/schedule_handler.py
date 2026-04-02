@@ -50,8 +50,8 @@ DAY_NAMES_FULL = {0: "Понедельник", 1: "Вторник", 2: "Сред
                   4: "Пятница", 5: "Суббота", 6: "Воскресенье"}
 
 
-def _week_inline_keyboard(events: list[dict]) -> list[InlineKeyboardMarkup]:
-    """Returns list of keyboards — one per day, each with a day header button and event buttons."""
+def _week_by_day(events: list[dict]) -> list[tuple[str, InlineKeyboardMarkup]]:
+    """Returns list of (day_header_text, keyboard) tuples — one per day."""
     from collections import OrderedDict
 
     by_day: OrderedDict[str, list] = OrderedDict()
@@ -60,13 +60,12 @@ def _week_inline_keyboard(events: list[dict]) -> list[InlineKeyboardMarkup]:
         date_key = (start.get("date") or start.get("dateTime", "")[:10])
         by_day.setdefault(date_key, []).append(event)
 
-    keyboards = []
+    result = []
     for date_key, day_events in by_day.items():
-        builder = InlineKeyboardBuilder()
         dt = datetime.fromisoformat(date_key)
-        day_label = f"── {DAY_NAMES_FULL[dt.weekday()]}, {dt.strftime('%d.%m')} ──"
-        # Day header (non-clickable — sends noop)
-        builder.button(text=day_label, callback_data="noop")
+        day_header = f"*{DAY_NAMES_FULL[dt.weekday()]}, {dt.strftime('%d.%m')}*"
+
+        builder = InlineKeyboardBuilder()
         for event in day_events:
             event_id = event.get("id", "")
             summary = event.get("summary", "(без названия)")
@@ -79,8 +78,8 @@ def _week_inline_keyboard(events: list[dict]) -> list[InlineKeyboardMarkup]:
                 label = f"✏️ {summary}"
             builder.button(text=label[:64], callback_data=f"edit_event:{event_id}")
         builder.adjust(1)
-        keyboards.append(builder.as_markup())
-    return keyboards
+        result.append((day_header, builder.as_markup()))
+    return result
 
 
 def _parse_event_text(text: str):
@@ -127,10 +126,9 @@ async def cmd_week(message: Message, state: FSMContext) -> None:
         events = get_week_events_raw()
         await message.answer(text, parse_mode="Markdown", reply_markup=admin_keyboard())
         if events:
-            keyboards = _week_inline_keyboard(events)
-            await message.answer("Нажми ✏️ чтобы изменить событие:")
-            for kb in keyboards:
-                await message.answer("\u200b", reply_markup=kb)
+            await message.answer("✏️ Нажми на событие чтобы изменить:")
+            for day_header, kb in _week_by_day(events):
+                await message.answer(day_header, parse_mode="Markdown", reply_markup=kb)
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_keyboard())
 
