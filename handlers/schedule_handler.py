@@ -17,6 +17,7 @@ from services.calendar_service import (
     get_today_events, get_week_events, get_week_events_raw,
     add_event, update_event,
 )
+from services.ai_formatter import parse_schedule_image
 
 router = Router()
 
@@ -29,6 +30,10 @@ class AddState(StatesGroup):
 
 class EditState(StatesGroup):
     waiting_for_new_details = State()
+
+
+class PhotoScheduleState(StatesGroup):
+    waiting_for_confirm = State()
 
 
 def admin_keyboard() -> ReplyKeyboardMarkup:
@@ -239,3 +244,79 @@ async def handle_add_details(message: Message, state: FSMContext) -> None:
         )
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_keyboard())
+
+
+@router.message(F.photo)
+async def handle_schedule_photo(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message):
+        return
+    await state.clear()
+
+    processing = await message.answer("⏳ Читаю расписание...")
+
+    try:
+        from datetime import date
+        photo = message.photo[-1]
+        file = await message.bot.get_file(photo.file_id)
+        file_bytes = await message.bot.download_file(file.file_path)
+        image_bytes = file_bytes.read()
+
+        today = date.today().isoformat()
+        events = await parse_schedule_image(image_bytes, today)
+    except Exception as e:
+        await processing.edit_text(f"❌ Ошибка при чтении фото: {e}", reply_markup=admin_keyboard())
+        return
+
+    if not events:
+        await processing.edit_text(
+            "😕 Не смогла распознать события. Попробуй сделать фото чётче.",
+            reply_markup=admin_keyboard(),
+        )
+        return
+
+    await state.update_data(pending_events=events)
+    await state.set_state(PhotoScheduleState.waiting_for_confirm)
+
+    lines = ["📋 *Вот что я нашла — добавить в календарь?*\n"]
+    for i, ev in enumerate(events, 1):
+        lines.append(f"{i}. {ev['date']} {ev['start_time']}–{ev['end_time']} — {ev['title']}")
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Да, добавить всё", callback_data="photo_schedule:confirm")
+    builder.button(text="❌ Отмена", callback_data="photo_schedule:cancel")
+    builder.adjust(2)
+
+    await processing.edit_text("\n".join(lines), parse_mode="Markdown", reply_markup=builder.as_markup())
+
+
+@router.callback_query(PhotoScheduleState.waiting_for_confirm, F.data.startswith("photo_schedule:"))
+async def handle_photo_schedule_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    action = callback.data.split(":")[1]
+
+    if action == "cancel":
+        await state.clear()
+        await callback.message.edit_text("Отменено.", reply_markup=None)
+        await callback.message.answer("Что ещё?", reply_markup=admin_keyboard())
+        return
+
+    data = await state.get_data()
+    events = data.get("pending_events", [])
+    await state.clear()
+
+    added = []
+    errors = []
+    for ev in events:
+        try:
+            add_event(ev["title"], ev["date"], ev["start_time"], ev["end_time"])
+            added.append(f"✅ {ev['date']} {ev['start_time']}–{ev['end_time']} {ev['title']}")
+        except Exception as e:
+            errors.append(f"❌ {ev['title']}: {e}")
+
+    result_lines = [f"*Добавлено {len(added)} из {len(events)}:*\n"] + added
+    if errors:
+        result_lines += ["\n*Ошибки:*"] + errors
+
+    await callback.message.edit_text("\n".join(result_lines), parse_mode="Markdown", reply_markup=None)
+    await callback.message.answer("Готово!", reply_markup=admin_keyboard())

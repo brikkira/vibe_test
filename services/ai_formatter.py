@@ -83,6 +83,49 @@ If any field cannot be determined, set it to null.
 Reply ONLY with valid JSON, no explanations."""
 
 
+_PARSE_SCHEDULE_IMAGE_PROMPT = """You are reading a handwritten weekly schedule from a photo.
+Today's date context will be provided. The schedule shows days of the week with events, times, and notes.
+
+Extract ALL events you can see. For each event return:
+- title: event name/description
+- date: YYYY-MM-DD (use the day number + month from context)
+- start_time: HH:MM (24h format)
+- end_time: HH:MM (24h format, estimate +1h if not shown)
+
+Return ONLY this JSON:
+{
+  "events": [
+    {"title": "...", "date": "YYYY-MM-DD", "start_time": "HH:MM", "end_time": "HH:MM"},
+    ...
+  ]
+}
+If time is unclear, do your best to estimate. Skip events with no time at all.
+Reply ONLY with valid JSON, no explanations."""
+
+
+async def parse_schedule_image(image_bytes: bytes, today: str) -> list[dict]:
+    """Parse a photo of a weekly schedule into a list of events."""
+    import base64
+    image_b64 = base64.b64encode(image_bytes).decode()
+    completion = await client.chat.completions.create(
+        model="openai/gpt-4o",
+        messages=[
+            {"role": "system", "content": _PARSE_SCHEDULE_IMAGE_PROMPT},
+            {"role": "user", "content": [
+                {"type": "text", "text": f"Today is {today}. Please extract all events from this schedule photo:"},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+            ]},
+        ],
+    )
+    response_text = completion.choices[0].message.content.strip()
+    if response_text.startswith("```"):
+        response_text = response_text.split("```")[1]
+        if response_text.startswith("json"):
+            response_text = response_text[4:]
+    data = json.loads(response_text)
+    return data.get("events", [])
+
+
 async def parse_event_nlp(text: str, today: str) -> dict:
     """Parse natural language event description into structured data."""
     completion = await client.chat.completions.create(
