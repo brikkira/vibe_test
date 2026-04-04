@@ -271,14 +271,13 @@ async def handle_schedule_photo(message: Message, state: FSMContext) -> None:
         import traceback
         tb = traceback.format_exc()
         print(f"[photo error] {tb}")
-        await processing.edit_text(f"❌ Ошибка: {e}", reply_markup=admin_keyboard())
+        await processing.edit_text(f"❌ Ошибка: {e}")
+        await message.answer("Что ещё?", reply_markup=admin_keyboard())
         return
 
     if not events:
-        await processing.edit_text(
-            "😕 Не смогла распознать события. Попробуй сделать фото чётче.",
-            reply_markup=admin_keyboard(),
-        )
+        await processing.edit_text("😕 Не смогла распознать события. Попробуй сделать фото чётче.")
+        await message.answer("Что ещё?", reply_markup=admin_keyboard())
         return
 
     await state.update_data(pending_events=events)
