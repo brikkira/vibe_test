@@ -256,15 +256,22 @@ async def handle_schedule_photo(message: Message, state: FSMContext) -> None:
 
     try:
         from datetime import date
+        import io
         photo = message.photo[-1]
         file = await message.bot.get_file(photo.file_id)
         file_bytes = await message.bot.download_file(file.file_path)
-        image_bytes = file_bytes.read()
+        if isinstance(file_bytes, (bytes, bytearray)):
+            image_bytes = file_bytes
+        else:
+            image_bytes = file_bytes.read() if hasattr(file_bytes, "read") else bytes(file_bytes)
 
         today = date.today().isoformat()
         events = await parse_schedule_image(image_bytes, today)
     except Exception as e:
-        await processing.edit_text(f"❌ Ошибка при чтении фото: {e}", reply_markup=admin_keyboard())
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[photo error] {tb}")
+        await processing.edit_text(f"❌ Ошибка: {e}", reply_markup=admin_keyboard())
         return
 
     if not events:
